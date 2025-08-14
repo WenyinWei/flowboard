@@ -88,7 +88,10 @@ async function warmDetect() {
 }
 
 ipcMain.handle('run-cell', async (evt, payload) => {
-  const { language, code, params, interpreter } = payload || {};
+  let { language, code, params, interpreter, path: codePath } = payload || {};
+  if (codePath && fs.existsSync(codePath)) {
+    try { code = fs.readFileSync(codePath, 'utf8') } catch {}
+  }
   if (!language || !code) return { ok: false, error: 'Missing language or code' };
   const cmd = interpreter
     || interpCache[language]
@@ -101,11 +104,143 @@ ipcMain.handle('run-cell', async (evt, payload) => {
   const scriptPath = path.join(tempDir, language === 'python' ? 'cell.py' : 'cell.jl');
   const inputPath = path.join(tempDir, 'input.json');
   const outImg = path.join(tempDir, 'output.png');
+  const outJson = path.join(tempDir, 'output.json');
 
+  if (language === 'python') {
+  const userPath = path.join(tempDir, 'user.py');
+  fs.writeFileSync(userPath, code, 'utf8');
+  const wrapper = `
+import os, sys, json
+
+# Load params/inputs
+params = {}
+inputs = []
+try:
+  inp = os.environ.get('FLOWBOARD_INPUT')
+  if inp and os.path.exists(inp):
+    with open(inp, 'r', encoding='utf-8') as f:
+      params = json.load(f)
+  if isinstance(params, dict):
+    inputs = params.get('inputs', []) or []
+except Exception:
+  params = {}
+  inputs = []
+
+# Convenience: bind x/y from inputs
+x = None
+y = None
+try:
+  if isinstance(inputs, list):
+    for it in inputs:
+      if isinstance(it, dict):
+        if x is None and 'x' in it:
+          x = it['x']
+        if y is None and 'y' in it:
+          y = it['y']
+        if 'value' in it:
+          if x is None and isinstance(it['value'], list):
+            x = it['value']
+          elif y is None and isinstance(it['value'], list):
+            y = it['value']
+      elif isinstance(it, list):
+        if x is None:
+          x = it
+        elif y is None:
+          y = it
+except Exception:
+  pass
+
+__flow_locals__ = { 'params': params, 'inputs': inputs, 'x': x, 'y': y }
+
+code_path = ` + JSON.stringify(path.join(tempDir, 'user.py')) + `
+with open(code_path, 'r', encoding='utf-8') as f:
+  __src__ = f.read()
+
+_last_expr_value = None
+_suppress = False
+try:
+  import ast
+  # Try to enable rich-colored tracebacks with locals
+  try:
+    import rich.traceback as _rt
+    _rt.install(show_locals=True, width=120)
+  except Exception:
+    pass
+  # Promote simple params as top-level variables (int/float/bool/str)
+  try:
+    if isinstance(params, dict):
+      for __k, __v in params.items():
+        if isinstance(__v, (int, float, bool, str)):
+          globals()[__k] = __v
+  except Exception:
+    pass
+  _lines = [ln.rstrip() for ln in __src__.splitlines() if ln.strip()!='']
+  if _lines and _lines[-1].endswith(';'):
+    _suppress = True
+  mod = ast.parse(__src__, mode='exec')
+  if getattr(mod, 'body', None) and isinstance(mod.body[-1], ast.Expr) and not _suppress:
+    last = ast.Expression(mod.body[-1].value)
+    exec(compile(ast.Module(mod.body[:-1], type_ignores=[]), '<flowboard>', 'exec'), __flow_locals__)
+    _last_expr_value = eval(compile(last, '<flowboard>', 'eval'), __flow_locals__)
+  else:
+    exec(compile(mod, '<flowboard>', 'exec'), __flow_locals__)
+except SystemExit as e:
+  raise
+except Exception as e:
+  try:
+    from rich.console import Console as _Console
+    _Console().print_exception(show_locals=True, width=120)
+  except Exception:
+    import traceback
+    traceback.print_exc()
+  sys.exit(1)
+
+# Save matplotlib figure if any
+try:
+  out_img = os.environ.get('FLOWBOARD_OUTPUT_IMAGE')
+  import matplotlib
+  matplotlib.use('Agg')
+  import matplotlib.pyplot as plt
+  if plt.get_fignums() and out_img:
+    plt.savefig(out_img, dpi=120, bbox_inches='tight')
+except Exception:
+  pass
+
+# Write JSON output for last expression value
+try:
+  out_json = os.environ.get('FLOWBOARD_OUTPUT_JSON')
+  if out_json and not _suppress and (_last_expr_value is not None):
+    def _default(o):
+      try:
+        import numpy as _np
+        if isinstance(o, _np.ndarray):
+          return o.tolist()
+      except Exception:
+        pass
+      try:
+        import pandas as _pd
+        if isinstance(o, (_pd.Series, _pd.DataFrame)):
+          return o.to_dict(orient='list') if isinstance(o, _pd.DataFrame) else o.tolist()
+      except Exception:
+        pass
+      if hasattr(o, 'tolist'):
+        try:
+          return o.tolist()
+        except Exception:
+          pass
+      return str(o)
+    with open(out_json, 'w', encoding='utf-8') as f:
+      json.dump({ 'value': _last_expr_value }, f, default=_default)
+except Exception:
+  pass
+`
+  fs.writeFileSync(scriptPath, wrapper, 'utf8');
+  } else {
   fs.writeFileSync(scriptPath, code, 'utf8');
+  }
   fs.writeFileSync(inputPath, JSON.stringify(params ?? {}), 'utf8');
 
-  const env = { ...process.env, FLOWBOARD_INPUT: inputPath, FLOWBOARD_OUTPUT_IMAGE: outImg };
+  const env = { ...process.env, FLOWBOARD_INPUT: inputPath, FLOWBOARD_OUTPUT_IMAGE: outImg, FLOWBOARD_OUTPUT_JSON: outJson, PYTHONIOENCODING: 'utf-8', TERM: 'xterm-256color', RICH_FORCE_TERMINAL: '1', PY_COLORS: '1' };
 
   const proc = spawn(cmd, [scriptPath], { env });
   let stdout = '';
@@ -115,9 +250,21 @@ ipcMain.handle('run-cell', async (evt, payload) => {
 
   const codeExit = await new Promise(resolve => proc.on('exit', resolve));
   const imageExists = fs.existsSync(outImg);
-  return codeExit === 0
-    ? { ok: true, stdout, imagePath: imageExists ? outImg : undefined }
-    : { ok: false, error: stderr || `Process exited with code ${codeExit}`, stdout };
+  let data;
+  try {
+    if (fs.existsSync(outJson)) {
+      const txt = fs.readFileSync(outJson, 'utf8');
+      data = JSON.parse(txt);
+    }
+  } catch (e) {
+    // ignore JSON errors; user script may not have produced JSON
+  }
+  if (codeExit === 0) {
+    const res = { ok: true, stdout, imagePath: imageExists ? outImg : undefined, data };
+    if (stderr && stderr.trim()) res.warning = stderr;
+    return res;
+  }
+  return { ok: false, error: stderr || `Process exited with code ${codeExit}`, stdout };
 });
 
 // Detect C++ compilers (best-effort): cl (MSVC), g++, clang++
@@ -142,7 +289,12 @@ ipcMain.handle('detect-compilers', async () => {
 
 // Open provided code in the system default editor by writing a temp file and letting OS handle it
 ipcMain.handle('open-in-editor', async (evt, payload) => {
-  const { language, code, hintName } = payload || {};
+  const { language, code, hintName, path: existingPath } = payload || {};
+  if (existingPath && fs.existsSync(existingPath)) {
+    const resOpen = await shell.openPath(existingPath);
+    if (resOpen) return { ok: false, error: resOpen };
+    return { ok: true, path: existingPath };
+  }
   if (!code) return { ok: false, error: 'No code provided' };
   const ext = language === 'python' ? '.py' : language === 'julia' ? '.jl' : '.txt';
   const fileName = (hintName && typeof hintName === 'string' ? hintName.replace(/[^\w.-]/g, '_') : 'cell') + ext;

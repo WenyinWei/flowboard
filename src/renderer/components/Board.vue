@@ -84,12 +84,49 @@ const marqueeStyle = computed(() => marquee.value ? ({ left: marquee.value.x+'px
 
 onMounted(() => {
   if (wf.cells.length === 0) {
-    // seed a few standard cells
-    wf.addCell({ label: 'Σ sum', config: { type: 'sum', language: wf.language, params: {} }, rects: undefined })
-    wf.addCell({ label: 'x̄ mean', config: { type: 'mean', language: wf.language, params: {} }, rects: undefined })
-    wf.addCell({ label: 'σ² var', config: { type: 'variance', language: wf.language, params: {} }, rects: undefined })
-    wf.addCell({ label: 'sin(x)', config: { type: 'sin', language: wf.language, params: { freq: 1 } }, rects: undefined })
-    wf.addCell({ label: 'B_t Brownian', config: { type: 'brownian', language: wf.language, params: { steps: 500 } }, rects: undefined })
+  // Seed initial cells: np.linspace -> sin(x) -> plot
+  const codeLin = `
+import math, numpy as np
+N = 256 if 'N' not in globals() else N
+start = 0.0 if 'start' not in globals() else start
+stop = 2*math.pi if 'stop' not in globals() else stop
+xs = np.linspace(start, stop, int(N))
+{'x': xs}
+`
+  const idX = wf.addCell({ label: 'np.linspace 0..2π', config: { type: 'custom', language: 'python', code: codeLin, params: { N: 256, start: 0, stop: Math.PI*2 } } as any, rects: undefined })
+  const cx = wf.cells.find(c=>c.id===idX); if (cx) { cx.inputs = []; cx.outputs = [{ id:'out' }] }
+
+  const codeSin = `
+import math
+xs = x or []
+freq = 1.0 if 'freq' not in globals() else freq
+ys = [math.sin(freq*val) for val in xs]
+{'x': xs, 'y': ys}
+`
+  const idSin = wf.addCell({ label: 'sin(x)', config: { type: 'custom', language: 'python', code: codeSin, params: { freq: 1 } } as any, rects: undefined })
+  const cs = wf.cells.find(c=>c.id===idSin); if (cs) { cs.inputs = [{ id:'in', capacity: 1 }]; cs.outputs = [{ id:'out' }] }
+
+  const codePlot = `
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+plt.figure(figsize=(6,3))
+if x and y:
+  plt.plot(x, y)
+  plt.title('sin(x) on (0, 2π)')
+else:
+  plt.text(0.5, 0.5, 'No data', ha='center', va='center')
+# showing a figure is enough; framework will save it and show
+plt.gcf()
+`
+  const idPlot = wf.addCell({ label: 'Plot sin(x)', config: { type: 'custom', language: 'python', code: codePlot, params: {} } as any, rects: undefined })
+  wf.setMode(idPlot, 'visual')
+  const cp = wf.cells.find(c=>c.id===idPlot); if (cp) { cp.inputs = [{ id:'in', capacity: 4 }]; cp.outputs = [] }
+
+  wf.addLink({ from: { cellId: idX, port: 'out' }, to: { cellId: idSin, port: 'in' } })
+  wf.addLink({ from: { cellId: idSin, port: 'out' }, to: { cellId: idPlot, port: 'in' } })
+  // Initial run to show plot
+  runWithDeps(idPlot)
   }
   const tick = () => { linksTick.value++ }
   window.addEventListener('cell-drag', tick as any)
@@ -101,7 +138,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('cell-moved', tick as any)
 })
 
-async function runCell(id: string) {
+async function runCell(id: string, propagate = true) {
   wf.startRun(id)
   const cell = wf.cells.find(c => c.id === id)
   if (!cell) return
@@ -110,12 +147,15 @@ async function runCell(id: string) {
   if (cell.config?.code && window.flowboard?.runCell) {
     try {
       // @ts-ignore
-      const runtime = cell.config.interpreter || (cell.config.language==='python' ? wf.runtimes?.python : wf.runtimes?.julia)
+  const runtime = cell.config.interpreter || (cell.config.language==='python' ? wf.runtimes?.python : wf.runtimes?.julia)
       // @ts-ignore
-      const res = await window.flowboard.runCell({ language: cell.config.language, code: cell.config.code, params: cell.config.params, interpreter: runtime })
+  const editedPath = (cell.config.params as any)?._editedPath
+  const res = await window.flowboard.runCell({ language: cell.config.language, code: cell.config.code, params: cell.config.params, interpreter: runtime, path: editedPath })
       if (res.ok) {
-        cell.lastResult = { stdout: res.stdout, imagePath: res.imagePath }
-        wf.finishRun(id, 'success')
+        cell.lastResult = { ...(res.data || {}), stdout: res.stdout, imagePath: res.imagePath }
+        if (res.warning) cell.lastWarning = res.warning
+        wf.finishRun(id, res.warning ? 'warning' : 'success')
+        if (propagate) await autoRunDownstream(id)
       } else {
         cell.lastError = res.error
         wf.finishRun(id, 'error')
@@ -131,6 +171,7 @@ async function runCell(id: string) {
   if (out.ok) {
     cell.lastResult = out.data
     wf.finishRun(id, 'success')
+  if (propagate) await autoRunDownstream(id)
   } else {
     cell.lastError = out.error
     wf.finishRun(id, 'error')
@@ -155,7 +196,29 @@ async function runWithDeps(targetId: string) {
     // collect inputs from upstream .lastResult
     const ins = wf.links.filter(l => l.to.cellId===id).map(l => wf.cells.find(c => c.id===l.from.cellId)?.lastResult).filter(Boolean)
     cell.config.params = { ...(cell.config.params||{}), inputs: ins }
-    await runCell(id)
+    await runCell(id, false)
+  }
+}
+
+// Auto-run downstream cells in BFS order starting from a cell
+async function autoRunDownstream(startId: string) {
+  const q: string[] = []
+  const seen = new Set<string>([startId])
+  // enqueue immediate downstream first
+  for (const l of wf.links.filter(l => l.from.cellId===startId)) {
+    if (!seen.has(l.to.cellId)) { seen.add(l.to.cellId); q.push(l.to.cellId) }
+  }
+  while (q.length) {
+    const id = q.shift()!
+    const cell = wf.cells.find(c => c.id===id)
+    if (!cell) continue
+    const ins = wf.links.filter(l => l.to.cellId===id).map(l => wf.cells.find(c => c.id===l.from.cellId)?.lastResult).filter(Boolean)
+    cell.config.params = { ...(cell.config.params||{}), inputs: ins }
+    await runCell(id, false)
+    // enqueue further downstream
+    for (const l of wf.links.filter(l => l.from.cellId===id)) {
+      if (!seen.has(l.to.cellId)) { seen.add(l.to.cellId); q.push(l.to.cellId) }
+    }
   }
 }
 
