@@ -12,19 +12,26 @@
       <div v-else-if="cell.status==='error'">Execution failed: {{ cell.lastError }}</div>
       <div v-else>Waiting for result...</div>
     </div>
-    <div class="timer" :class="statusClass">
+  <div
+      class="timer"
+      :class="[statusClass, { clickable: !!detailText }]"
+      :title="detailText || ''"
+      @click="onTimerClick"
+    >
+      <span class="elapsed">{{ humanTime(runningInfo.elapsed) }}</span>
       <span v-if="runningInfo.status==='running'" class="spinner">⟳</span>
       <span v-else-if="runningInfo.status==='success'">✅</span>
       <span v-else-if="runningInfo.status==='error'">❌</span>
       <span v-else-if="runningInfo.status==='warning'">⚠️</span>
-      <span class="elapsed">{{ humanTime(runningInfo.elapsed) }}</span>
     </div>
+  <AnsiModal v-model="showDetail" :title="modalTitle" :text="detailText || ''" />
   </div>
 </template>
 
 <script setup lang="ts">
 import type { CellState, CellTheme } from '../../store/workflow'
 import { computed, onMounted, onUpdated, ref } from 'vue'
+import AnsiModal from '../AnsiModal.vue'
 const imagePath = computed(() => (props.cell.lastResult?.imagePath as string) || '')
 const imageSrc = computed(() => imagePath.value ? `file://${imagePath.value}` : '')
 
@@ -38,6 +45,15 @@ const styleVars = computed(() => ({
 }))
 
 const statusClass = computed(() => props.runningInfo.status)
+
+const detailText = computed(() => {
+  if (props.runningInfo.status === 'error') return props.cell.lastError || ''
+  if (props.runningInfo.status === 'warning') return props.cell.lastWarning || ''
+  return ''
+})
+const showDetail = ref(false)
+const modalTitle = computed(() => props.runningInfo.status === 'error' ? 'Error' : (props.runningInfo.status === 'warning' ? 'Warning' : ''))
+function onTimerClick() { if (detailText.value) showDetail.value = true }
 
 function humanTime(ms: number) {
   const s = Math.floor(ms / 1000)
@@ -84,7 +100,8 @@ onUpdated(render)
 .canvas { padding: 12px; }
 .btn { background: transparent; color: var(--fg); border: 1px solid var(--bd); border-radius: 6px; padding: 2px 6px; cursor: pointer; }
 .btn.run { border-color: var(--ac); color: var(--ac); }
-.timer { position: absolute; right: 8px; bottom: 8px; display: inline-flex; gap: 6px; align-items: center; border: 1px solid var(--bd); border-radius: 6px; padding: 2px 6px; background: rgba(255,255,255,0.05); }
+.timer { position: absolute; right: 8px; bottom: 8px; display: inline-flex; gap: 6px; align-items: center; border: 1px solid var(--bd); border-radius: 6px; padding: 2px 6px; background: rgba(255,255,255,0.05); white-space: nowrap; }
+.timer.clickable { cursor: pointer; }
 .spinner { animation: spin 1s linear infinite; }
 @keyframes spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }
 </style>

@@ -1,13 +1,19 @@
 <template>
   <div class="node" :style="styleVars">
     <div class="glyph">{{ glyph }}</div>
-    <div class="timer" :class="statusClass">
+    <div
+      class="timer"
+      :class="[statusClass, { clickable: !!detailText }]"
+      :title="detailText || ''"
+      @click="onTimerClick"
+    >
+      <span class="elapsed">{{ humanTime(runningInfo.elapsed) }}</span>
       <span v-if="runningInfo.status==='running'" class="spinner">⟳</span>
       <span v-else-if="runningInfo.status==='success'">✅</span>
       <span v-else-if="runningInfo.status==='error'">❌</span>
       <span v-else-if="runningInfo.status==='warning'">⚠️</span>
-      <span class="elapsed">{{ humanTime(runningInfo.elapsed) }}</span>
     </div>
+    <AnsiModal v-model="showDetail" :title="modalTitle" :text="detailText || ''" />
     <div class="switches">
       <button class="btn" @click="$emit('switchMode','card')">▭</button>
   <button class="btn" @click="$emit('switchMode','visual')">▣</button>
@@ -19,7 +25,8 @@
 
 <script setup lang="ts">
 import type { CellState, CellTheme } from '../../store/workflow'
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
+import AnsiModal from '../AnsiModal.vue'
 
 const props = defineProps<{ cell: CellState; theme: CellTheme; runningInfo: { status: string; elapsed: number } }>()
 
@@ -48,6 +55,15 @@ const styleVars = computed(() => ({
 
 const statusClass = computed(() => props.runningInfo.status)
 
+const detailText = computed(() => {
+  if (props.runningInfo.status === 'error') return props.cell.lastError || ''
+  if (props.runningInfo.status === 'warning') return props.cell.lastWarning || ''
+  return ''
+})
+const showDetail = ref(false)
+const modalTitle = computed(() => props.runningInfo.status === 'error' ? 'Error' : (props.runningInfo.status === 'warning' ? 'Warning' : ''))
+function onTimerClick() { if (detailText.value) showDetail.value = true }
+
 function humanTime(ms: number) {
   const s = Math.floor(ms / 1000)
   const m = Math.floor(s / 60)
@@ -69,7 +85,8 @@ function humanTime(ms: number) {
   position: relative;
 }
 .glyph { font-size: 24px; font-weight: 700; }
-.timer { position: absolute; bottom: -8px; left: 50%; transform: translateX(-50%); font-size: 12px; padding: 1px 6px; border-radius: 6px; border: 1px solid var(--bd); background: rgba(255,255,255,0.05); display: inline-flex; gap: 6px; align-items: center; }
+.timer { position: absolute; bottom: -8px; left: 50%; transform: translateX(-50%); font-size: 12px; padding: 1px 6px; border-radius: 6px; border: 1px solid var(--bd); background: rgba(255,255,255,0.05); display: inline-flex; gap: 6px; align-items: center; white-space: nowrap; }
+.timer.clickable { cursor: pointer; }
 .spinner { animation: spin 1s linear infinite; }
 .switches { position: absolute; top: 4px; right: 4px; display: flex; gap: 4px; }
 .btn { background: transparent; color: var(--fg); border: 1px solid var(--bd); border-radius: 6px; padding: 2px 6px; cursor: pointer; }
