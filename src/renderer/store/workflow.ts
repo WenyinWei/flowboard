@@ -25,11 +25,14 @@ export interface CellTheme {
   border?: string
 }
 
+export interface ParamDef { type?: 'number'|'int'|'range'|'choice'; min?: number; max?: number; step?: number; choices?: any[] }
+
 export interface CellConfig {
   type: CellType
   language: Language
   code?: string
-  params?: Record<string, number>
+  params?: Record<string, any>
+  paramDefs?: Record<string, ParamDef>
   theme?: CellTheme // optional per-cell theme
   interpreter?: string // optional per-cell interpreter path/command
 }

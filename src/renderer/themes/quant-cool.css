@@ -1,0 +1,29 @@
+/* Quant Cool: cyan/green neon edges with animated conic sweep and inner glow */
+.theme-quant-cool .card,
+.theme-quant-cool .visual,
+.theme-quant-cool .node { position: relative; isolation: isolate; }
+
+.theme-quant-cool .card::before,
+.theme-quant-cool .visual::before,
+.theme-quant-cool .node::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  background: conic-gradient(from 0deg, rgba(31,143,255,0.0), rgba(31,143,255,0.75), rgba(21,189,102,0.5), rgba(31,143,255,0.0) 75%);
+  filter: blur(12px) saturate(120%);
+  opacity: 0;
+  transition: opacity 200ms ease;
+  z-index: -1;
+  pointer-events: none;
+}
+
+.theme-quant-cool .card.running::before,
+.theme-quant-cool .visual.running::before,
+.theme-quant-cool .node.running::before { opacity: 1; animation: qc-sweep 2.2s linear infinite; }
+
+@keyframes qc-sweep { to { transform: rotate(360deg); } }
+
+.theme-quant-cool .card,
+.theme-quant-cool .visual { box-shadow: 0 12px 28px rgba(0,0,0,0.45), inset 0 0 24px rgba(0,0,0,0.15); }
+.theme-quant-cool .node { box-shadow: inset 0 0 24px rgba(31,143,255,0.14); }

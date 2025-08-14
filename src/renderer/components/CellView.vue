@@ -1,5 +1,5 @@
 <template>
-  <div class="cell" :class="{ selected: isSelected }" :style="cellStyle" ref="rootRef" @mousedown="onDown" @dblclick="onDblClick" :data-cell-id="cell.id">
+  <div class="cell" :class="[{ selected: isSelected }, themeClass]" :style="cellStyle" ref="rootRef" @mousedown="onDown" @dblclick="onDblClick" :data-cell-id="cell.id">
   <component :is="comp" :cell="cell" :theme="theme" :runningInfo="runningInfo" @switchMode="switchMode" @run="onRunClick" @run-downstream="onRunDownstreamClick" />
     <!-- inline port handles for precise hit targets -->
   <div class="port in" v-for="p in cell.inputs" :key="'in-'+p.id" :data-port-id="p.id" :title="p.id" @mouseup.stop="$emit('port-in-up', p.id)"></div>
@@ -21,6 +21,7 @@ const emit = defineEmits<{ (e: 'run', id: string): void; (e: 'port-in-up', portI
 const wf = useWorkflow()
 const isSelected = computed(() => wf.selectedIds.includes(props.cell.id))
 const rootRef = ref<HTMLDivElement | null>(null)
+const themeClass = computed(() => `theme-${(props.theme?.name||wf.globalTheme.name||'default').replace(/[^a-z0-9-]/gi, '-')}`)
 
 const comp = computed(() => {
   switch (props.cell.mode) {
@@ -141,6 +142,7 @@ onBeforeUnmount(() => {
 .port { position: absolute; width: 12px; height: 12px; border-radius: 50%; background: #6aa2ff; border: 2px solid #1d3a66; pointer-events: auto; cursor: crosshair; }
 .port.in { left: -6px; top: 50%; transform: translateY(-50%); background: #3bd18a; border-color: #124a31 }
 .port.out { right: -6px; top: 50%; transform: translateY(-50%); }
+.port:hover { box-shadow: 0 0 8px rgba(94,200,255,0.8); }
 </style>
 
 <style>
@@ -149,4 +151,5 @@ onBeforeUnmount(() => {
   -webkit-user-select: none !important;
 }
 .cell.selected { outline: 2px solid #5ec8ff; border-radius: 10px; }
+.cell.selected .port { box-shadow: 0 0 10px rgba(94,200,255,0.9); }
 </style>

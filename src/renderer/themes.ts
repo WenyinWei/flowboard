@@ -24,6 +24,38 @@ export const Themes: Record<string, CellTheme> = {
     accent: '#e4002b',
     accent2: '#b3001f',
     border: '#f2b3b3'
+  },
+  'cyberpunk': {
+    name: 'cyberpunk',
+    background: '#120016',
+    foreground: '#e9e3ff',
+    accent: '#00e5ff',
+    accent2: '#ff00d4',
+    border: '#2a1038'
+  },
+  'terminal-green': {
+    name: 'terminal-green',
+    background: '#001b00',
+    foreground: '#b7ffb7',
+    accent: '#00ff66',
+    accent2: '#39ff14',
+    border: '#0b2a0b'
+  },
+  'ocean-blue': {
+    name: 'ocean-blue',
+    background: '#07121f',
+    foreground: '#e6f6ff',
+    accent: '#15b2ff',
+    accent2: '#00ffd1',
+    border: '#12324a'
+  },
+  'matrix-black': {
+    name: 'matrix-black',
+    background: '#000000',
+    foreground: '#b3ffb3',
+    accent: '#00ff66',
+    accent2: '#00cc44',
+    border: '#0d1b0d'
   }
 }
 

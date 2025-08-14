@@ -1,0 +1,42 @@
+/* Cyberpunk: purple/teal neon, scanline sweep, chromatic fringe */
+.theme-cyberpunk .card,
+.theme-cyberpunk .visual,
+.theme-cyberpunk .node { position: relative; isolation: isolate; }
+
+.theme-cyberpunk .card::before,
+.theme-cyberpunk .visual::before,
+.theme-cyberpunk .node::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  background: conic-gradient(from 0deg, rgba(255,0,212,0.6), rgba(0,229,255,0.65), rgba(255,0,212,0.6), rgba(0,229,255,0.65));
+  filter: blur(12px) saturate(130%);
+  opacity: 0.0;
+  z-index: -1;
+  transition: opacity 200ms ease;
+  pointer-events: none;
+}
+.theme-cyberpunk .card.running::before,
+.theme-cyberpunk .visual.running::before,
+.theme-cyberpunk .node.running::before { opacity: 1; animation: cp-rot 1.6s linear infinite; }
+
+@keyframes cp-rot { to { transform: rotate(360deg); } }
+
+/* Scanline sweep overlay */
+.theme-cyberpunk .card::after,
+.theme-cyberpunk .visual::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: repeating-linear-gradient( to bottom, rgba(255,255,255,0.05) 0 2px, transparent 2px 4px );
+  opacity: 0;
+  mix-blend-mode: screen;
+  transition: opacity 200ms ease;
+  pointer-events: none;
+}
+.theme-cyberpunk .card.running::after,
+.theme-cyberpunk .visual.running::after { opacity: 0.9; animation: cp-scan 1.2s linear infinite; }
+
+@keyframes cp-scan { 0% { background-position-y: 0; } 100% { background-position-y: 8px; } }

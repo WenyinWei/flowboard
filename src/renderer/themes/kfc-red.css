@@ -1,0 +1,34 @@
+/* KFC Red: bold red rim light with diagonal highlight sweep */
+.theme-kfc-red .card,
+.theme-kfc-red .visual,
+.theme-kfc-red .node { position: relative; isolation: isolate; }
+
+.theme-kfc-red .card::after,
+.theme-kfc-red .visual::after,
+.theme-kfc-red .node::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(135deg, transparent 38%, rgba(228,0,43,0.55) 50%, transparent 62%);
+  mix-blend-mode: screen;
+  opacity: 0.0;
+  transition: opacity 200ms ease;
+  pointer-events: none;
+}
+
+.theme-kfc-red .card.running::after,
+.theme-kfc-red .visual.running::after,
+.theme-kfc-red .node.running::after { opacity: 1; animation: kfc-sweep 1.0s linear infinite; }
+
+@keyframes kfc-sweep {
+  0% { background-position: -120% 0; background-size: 200% 200%; }
+  100% { background-position: 120% 0; background-size: 200% 200%; }
+}
+
+.theme-kfc-red .card,
+.theme-kfc-red .visual { box-shadow: 0 16px 34px rgba(179,0,31,0.45), 0 0 30px rgba(228,0,43,0.25); animation: kfc-breathe 2.2s ease-in-out infinite; }
+.theme-kfc-red .node { box-shadow: inset 0 0 26px rgba(228,0,43,0.3), 0 0 22px rgba(228,0,43,0.25); animation: kfc-rim 1.6s ease-in-out infinite; }
+
+@keyframes kfc-rim { 0%,100% { filter: drop-shadow(0 0 0 rgba(228,0,43,0)); } 50% { filter: drop-shadow(0 0 10px rgba(228,0,43,0.55)); } }
+@keyframes kfc-breathe { 0%,100% { filter: saturate(1) brightness(1); } 50% { filter: saturate(1.1) brightness(1.06); } }

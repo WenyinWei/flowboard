@@ -1,0 +1,41 @@
+/* Ocean Blue: deep sea gradient rim, bubble sweep */
+.theme-ocean-blue .card,
+.theme-ocean-blue .visual,
+.theme-ocean-blue .node { position: relative; isolation: isolate; }
+
+/* Rim: cool blue/teal gradient glow */
+.theme-ocean-blue .card::before,
+.theme-ocean-blue .visual::before,
+.theme-ocean-blue .node::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  background: radial-gradient(60% 60% at 50% 50%, rgba(21,178,255,0.35), transparent 65%),
+              radial-gradient(30% 30% at 20% 20%, rgba(0,255,209,0.25), transparent 60%);
+  filter: blur(10px);
+  opacity: 0.0;
+  z-index: -1;
+  transition: opacity 200ms ease;
+  pointer-events: none;
+}
+.theme-ocean-blue .card.running::before,
+.theme-ocean-blue .visual.running::before,
+.theme-ocean-blue .node.running::before { opacity: 1; }
+
+/* Bubble sweep overlay for cards/visual */
+.theme-ocean-blue .card::after,
+.theme-ocean-blue .visual::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(10px 10px at -5% 100%, rgba(255,255,255,0.35), transparent 60%);
+  opacity: 0.0;
+  transition: opacity 150ms ease;
+  pointer-events: none;
+}
+.theme-ocean-blue .card.running::after,
+.theme-ocean-blue .visual.running::after { opacity: 0.7; animation: ocean-bubble 1.8s linear infinite; }
+
+@keyframes ocean-bubble { 0% { background-position: -5% 100%; } 100% { background-position: 105% -20%; } }

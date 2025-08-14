@@ -7,6 +7,13 @@
 
 <script setup lang="ts">
 import Board from './components/Board.vue'
+import './themes/quant-cool.css'
+import './themes/kfc-red.css'
+import './themes/stock-dark-rg.css'
+import './themes/cyberpunk.css'
+import './themes/terminal-green.css'
+import './themes/ocean-blue.css'
+import './themes/matrix-black.css'
 </script>
 
 <style>

@@ -1,5 +1,5 @@
 <template>
-  <div class="node" :style="styleVars">
+  <div class="node" :style="styleVars" :class="[runningInfo.status, themeClass]">
     <div class="glyph">{{ glyph }}</div>
     <div
       class="timer"
@@ -54,6 +54,7 @@ const styleVars = computed(() => ({
 }))
 
 const statusClass = computed(() => props.runningInfo.status)
+const themeClass = computed(() => `theme-${(props.theme.name||'default').replace(/[^a-z0-9-]/gi, '-')}`)
 
 const detailText = computed(() => {
   if (props.runningInfo.status === 'error') return props.cell.lastError || ''
@@ -97,13 +98,22 @@ function onRunDownstream() {
   display: grid;
   place-items: center;
   position: relative;
+  box-shadow: inset 0 0 0 rgba(0,0,0,0);
+  transition: box-shadow 250ms ease, filter 250ms ease;
 }
 .glyph { font-size: 24px; font-weight: 700; }
-.timer { position: absolute; bottom: -8px; left: 50%; transform: translateX(-50%); font-size: 12px; padding: 1px 6px; border-radius: 6px; border: 1px solid var(--bd); background: rgba(255,255,255,0.05); display: inline-flex; gap: 6px; align-items: center; white-space: nowrap; }
+.timer { position: absolute; bottom: -8px; left: 50%; transform: translateX(-50%); font-size: 12px; padding: 1px 6px; border-radius: 6px; border: 1px solid var(--bd); background: rgba(255,255,255,0.05); display: inline-flex; gap: 6px; align-items: center; white-space: nowrap; z-index: 2; }
 .timer.clickable { cursor: pointer; }
 .spinner { animation: spin 1s linear infinite; }
 .switches { position: absolute; top: 4px; right: 4px; display: flex; gap: 4px; }
 .btn { background: transparent; color: var(--fg); border: 1px solid var(--bd); border-radius: 6px; padding: 2px 6px; cursor: pointer; }
 .btn.run { border-color: var(--ac); color: var(--ac); }
 @keyframes spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }
+
+.node.running { animation: glow 1.2s ease-in-out infinite; }
+@keyframes glow {
+  0% { filter: drop-shadow(0 0 0 rgba(31,143,255,0)); box-shadow: inset 0 0 0 rgba(31,143,255,0); }
+  50% { filter: drop-shadow(0 0 8px rgba(31,143,255,0.6)); box-shadow: inset 0 0 24px rgba(31,143,255,0.15); }
+  100% { filter: drop-shadow(0 0 0 rgba(31,143,255,0)); box-shadow: inset 0 0 0 rgba(31,143,255,0); }
+}
 </style>

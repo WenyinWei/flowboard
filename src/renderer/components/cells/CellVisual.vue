@@ -1,5 +1,5 @@
 <template>
-  <div class="visual" :style="styleVars">
+  <div class="visual" :style="styleVars" :class="[runningInfo.status, themeClass]">
     <div class="toolbar">
     <button class="btn" @mousedown.stop @click="$emit('switchMode','card')">▭</button>
     <button class="btn" @mousedown.stop @click="$emit('switchMode','node')">●</button>
@@ -45,6 +45,7 @@ const styleVars = computed(() => ({
 }))
 
 const statusClass = computed(() => props.runningInfo.status)
+const themeClass = computed(() => `theme-${(props.theme.name||'default').replace(/[^a-z0-9-]/gi, '-')}`)
 
 const detailText = computed(() => {
   if (props.runningInfo.status === 'error') return props.cell.lastError || ''
@@ -108,13 +109,20 @@ onUpdated(render)
 </script>
 
 <style scoped>
-.visual { width: 100%; height: 100%; border-radius: 10px; border: 1px solid var(--bd); background: var(--bg); color: var(--fg); position: relative; display: grid; grid-template-rows: auto 1fr auto; }
+.visual { width: 100%; height: 100%; border-radius: 10px; border: 1px solid var(--bd); background: var(--bg); color: var(--fg); position: relative; display: grid; grid-template-rows: auto 1fr auto; transition: filter 250ms ease, box-shadow 250ms ease; box-shadow: 0 10px 28px rgba(0,0,0,0.35); }
 .toolbar { padding: 6px; display: flex; gap: 6px; justify-content: space-between; }
 .canvas { padding: 12px; }
 .btn { background: transparent; color: var(--fg); border: 1px solid var(--bd); border-radius: 6px; padding: 2px 6px; cursor: pointer; }
 .btn.run { border-color: var(--ac); color: var(--ac); }
-.timer { position: absolute; right: 8px; bottom: 8px; display: inline-flex; gap: 6px; align-items: center; border: 1px solid var(--bd); border-radius: 6px; padding: 2px 6px; background: rgba(255,255,255,0.05); white-space: nowrap; }
+.timer { position: absolute; right: 8px; bottom: 8px; display: inline-flex; gap: 6px; align-items: center; border: 1px solid var(--bd); border-radius: 6px; padding: 2px 6px; background: rgba(255,255,255,0.05); white-space: nowrap; z-index: 2; }
 .timer.clickable { cursor: pointer; }
 .spinner { animation: spin 1s linear infinite; }
 @keyframes spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }
+
+.visual.running { animation: vglow 1.2s ease-in-out infinite; }
+@keyframes vglow {
+  0% { filter: drop-shadow(0 0 0 rgba(21,189,102,0)); box-shadow: 0 10px 28px rgba(0,0,0,0.35); }
+  50% { filter: drop-shadow(0 0 10px rgba(21,189,102,0.6)); box-shadow: 0 10px 28px rgba(0,0,0,0.35), 0 0 28px rgba(21,189,102,0.25); }
+  100% { filter: drop-shadow(0 0 0 rgba(21,189,102,0)); box-shadow: 0 10px 28px rgba(0,0,0,0.35); }
+}
 </style>
