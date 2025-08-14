@@ -1,0 +1,88 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "FlowBoard Workflow",
+  "type": "object",
+  "required": ["id", "name", "cells", "links"],
+  "properties": {
+    "id": { "type": "string" },
+    "name": { "type": "string" },
+    "version": { "type": "integer" },
+    "globalTheme": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "background": { "type": "string" },
+        "foreground": { "type": "string" },
+        "accent": { "type": "string" },
+        "accent2": { "type": "string" },
+        "border": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "cells": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "label", "mode", "rects", "config"],
+        "properties": {
+          "id": { "type": "string" },
+          "label": { "type": "string" },
+          "mode": { "enum": ["node", "card", "visual"] },
+          "rects": {
+            "type": "object",
+            "properties": {
+              "node": { "$ref": "#/definitions/rect" },
+              "card": { "$ref": "#/definitions/rect" },
+              "visual": { "$ref": "#/definitions/rect" }
+            },
+            "additionalProperties": false
+          },
+          "config": {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string" },
+              "language": { "enum": ["python", "julia"] },
+              "code": { "type": "string" },
+              "params": { "type": "object" },
+              "theme": { "$ref": "#/definitions/theme" }
+            },
+            "additionalProperties": true
+          },
+          "inputs": { "type": "array", "items": { "$ref": "#/definitions/port" } },
+          "outputs": { "type": "array", "items": { "$ref": "#/definitions/port" } },
+          "status": { "enum": ["idle", "running", "success", "error", "warning"] }
+        },
+        "additionalProperties": true
+      }
+    },
+    "links": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["from", "to"],
+        "properties": {
+          "from": { "type": "object", "required": ["cellId", "port"], "properties": { "cellId": { "type": "string" }, "port": { "type": "string" } } },
+          "to": { "type": "object", "required": ["cellId", "port"], "properties": { "cellId": { "type": "string" }, "port": { "type": "string" } } }
+        },
+        "additionalProperties": false
+      }
+    },
+    "language": { "enum": ["python", "julia"] }
+  },
+  "additionalProperties": true,
+  "definitions": {
+    "rect": {
+      "type": "object",
+      "required": ["x", "y", "w", "h"],
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "w": { "type": "number" },
+        "h": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "port": { "type": "object", "required": ["id"], "properties": { "id": { "type": "string" }, "capacity": { "type": "integer", "minimum": 0 } }, "additionalProperties": false },
+    "theme": { "type": "object", "properties": { "name": { "type": "string" }, "background": { "type": "string" }, "foreground": { "type": "string" }, "accent": { "type": "string" }, "accent2": { "type": "string" }, "border": { "type": "string" } }, "additionalProperties": false }
+  }
+}
