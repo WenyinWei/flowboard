@@ -1,0 +1,41 @@
+# Node
+node_modules/
+.npm/
+.pnpm-store/
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+
+# Build output
+/dist/
+/out/
+/.vite/
+/*.log
+logs/
+*.log
+*.tmp
+*.temp
+*.tsbuildinfo
+
+# Editor
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Electron
+/electron-build/
+/*.asar
+/dist-electron/
+
+# Runtime
+/tmp/
+/.cache/
+
+# OS
+ehthumbs.db
+Icon?
+
+# Env
+.env
+.env.*.local
