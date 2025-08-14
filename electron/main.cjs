@@ -14,15 +14,28 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      preload: path.join(__dirname, 'preload.cjs')
+  preload: path.join(__dirname, 'preload.cjs'),
+  webSecurity: !isDev,
+  allowRunningInsecureContent: isDev
     }
   });
 
+  // Forward renderer console to main console for easier debugging
+  try {
+    win.webContents.on('console-message', (event, level, message, line, sourceId) => {
+      const lvl = ['log','warn','error','debug','info'][level] || String(level)
+      console.log(`[renderer:${lvl}] ${message} (${sourceId}:${line})`)
+    })
+  } catch {}
+
   if (isDev) {
-    win.loadURL('http://localhost:5173');
-    win.webContents.openDevTools({ mode: 'detach' });
+  console.log('[main] Dev mode, loading Vite dev server at http://localhost:5173');
+  win.loadURL('http://localhost:5173');
+  win.webContents.openDevTools({ mode: 'detach' });
   } else {
-    win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
+  const file = path.join(__dirname, '..', 'dist', 'index.html');
+  console.log('[main] Prod mode, loading file://', file);
+  win.loadFile(file);
   }
 }
 
@@ -71,7 +84,9 @@ ipcMain.handle('detect-interpreters', async () => {
       ])
     : await detect(['python3', 'python']);
   const jl = await detect(['julia']);
-  return { python: py, julia: jl };
+  const res = { python: py, julia: jl };
+  console.log('[main] detect-interpreters =>', res);
+  return res;
 });
 
 let interpCache = { python: undefined, julia: undefined };
@@ -89,6 +104,13 @@ async function warmDetect() {
 
 ipcMain.handle('run-cell', async (evt, payload) => {
   let { language, code, params, interpreter, path: codePath } = payload || {};
+  console.log('[main] run-cell invoked with:', {
+    language,
+    codeLen: code ? String(code).length : 0,
+    paramsKeys: params && typeof params === 'object' ? Object.keys(params) : undefined,
+    interpreter,
+    codePath
+  });
   if (codePath && fs.existsSync(codePath)) {
     try { code = fs.readFileSync(codePath, 'utf8') } catch {}
   }
@@ -98,7 +120,10 @@ ipcMain.handle('run-cell', async (evt, payload) => {
     || (await (language === 'python'
           ? (process.platform==='win32' ? detectVariants([{ cmd:'py', args:['-3','-V'] },{ cmd:'python', args:['--version'] },{ cmd:'python3', args:['--version'] }]) : detect(['python3','python']))
           : detect(['julia'])));
-  if (!cmd) return { ok: false, error: `No ${language} interpreter found` };
+  if (!cmd) {
+    console.error('[main] No interpreter found for', language);
+    return { ok: false, error: `No ${language} interpreter found` };
+  }
 
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'flowboard-'));
   const scriptPath = path.join(tempDir, language === 'python' ? 'cell.py' : 'cell.jl');
@@ -171,7 +196,7 @@ try:
     if isinstance(params, dict):
       for __k, __v in params.items():
         if isinstance(__v, (int, float, bool, str)):
-          globals()[__k] = __v
+          __flow_locals__[__k] = __v
   except Exception:
     pass
   _lines = [ln.rstrip() for ln in __src__.splitlines() if ln.strip()!='']
@@ -206,10 +231,19 @@ try:
 except Exception:
   pass
 
-# Write JSON output for last expression value
+# Write JSON output for last expression value (or x/y fallback)
 try:
   out_json = os.environ.get('FLOWBOARD_OUTPUT_JSON')
-  if out_json and not _suppress and (_last_expr_value is not None):
+  if out_json and not _suppress:
+    payload = _last_expr_value
+    # Fallback: if no last expr, but x/y present, emit them
+    if payload is None:
+      try:
+        _x = __flow_locals__.get('x'); _y = __flow_locals__.get('y')
+        if _x is not None or _y is not None:
+          payload = { 'x': _x, 'y': _y }
+      except Exception:
+        pass
     def _default(o):
       try:
         import numpy as _np
@@ -230,7 +264,7 @@ try:
           pass
       return str(o)
     with open(out_json, 'w', encoding='utf-8') as f:
-      json.dump({ 'value': _last_expr_value }, f, default=_default)
+      json.dump({ 'value': payload }, f, default=_default)
 except Exception:
   pass
 `
@@ -242,13 +276,19 @@ except Exception:
 
   const env = { ...process.env, FLOWBOARD_INPUT: inputPath, FLOWBOARD_OUTPUT_IMAGE: outImg, FLOWBOARD_OUTPUT_JSON: outJson, PYTHONIOENCODING: 'utf-8', TERM: 'xterm-256color', RICH_FORCE_TERMINAL: '1', PY_COLORS: '1' };
 
-  const proc = spawn(cmd, [scriptPath], { env });
+  console.log('[main] Spawning', cmd, 'with script:', scriptPath);
+  const args = (process.platform === 'win32' && cmd === 'py') ? ['-3', scriptPath] : [scriptPath]
+  const proc = spawn(cmd, args, { env });
   let stdout = '';
   let stderr = '';
   proc.stdout.on('data', d => stdout += d.toString());
   proc.stderr.on('data', d => stderr += d.toString());
+  proc.on('error', (err) => {
+    console.error('[main] Spawn error:', err?.message || err);
+  });
 
   const codeExit = await new Promise(resolve => proc.on('exit', resolve));
+  console.log('[main] Process exit code:', codeExit, 'stdout bytes:', stdout.length, 'stderr bytes:', stderr.length);
   const imageExists = fs.existsSync(outImg);
   let data;
   try {

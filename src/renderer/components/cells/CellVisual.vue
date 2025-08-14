@@ -1,10 +1,10 @@
 <template>
   <div class="visual" :style="styleVars">
     <div class="toolbar">
-      <button class="btn" @click="$emit('switchMode','card')">▭</button>
-      <button class="btn" @click="$emit('switchMode','node')">●</button>
-  <button class="btn run" @click="$emit('run')">Run</button>
-  <button class="btn" title="Run downstream" @click="$emit('run')">▼</button>
+    <button class="btn" @mousedown.stop @click="$emit('switchMode','card')">▭</button>
+    <button class="btn" @mousedown.stop @click="$emit('switchMode','node')">●</button>
+  <button class="btn run" @mousedown.stop @click="onRun">Run</button>
+    <button class="btn" title="Run downstream" @mousedown.stop @click="onRunDownstream">▼</button>
     </div>
     <div class="canvas">
       <img v-if="cell.status==='success' && imagePath" :src="imageSrc" class="img" />
@@ -61,6 +61,19 @@ function humanTime(ms: number) {
   const sec = s % 60
   if (m > 0) return `${m}m ${sec}s`
   return `${sec}s`
+}
+
+function onRun() {
+  console.log('[renderer] CellVisual run click', props.cell.id)
+  // Emit upward
+  // @ts-ignore
+  ;(emit as any)('run')
+}
+
+function onRunDownstream() {
+  console.log('[renderer] CellVisual run downstream click', props.cell.id)
+  // @ts-ignore
+  ;(emit as any)('run-downstream')
 }
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)

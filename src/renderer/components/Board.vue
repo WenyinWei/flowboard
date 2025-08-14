@@ -53,7 +53,8 @@
       :key="c.id+'v'"
       :cell="c"
       :theme="c.theme ?? wf.globalTheme"
-      @run="(id) => runWithDeps(id)"
+  @run="(id) => { console.log('[renderer] Board received run for', id); runJustCell(id) }"
+  @run-downstream="(id) => { console.log('[renderer] Board received run-downstream for', id); runSelfAndDownstream(id) }"
       @port-out-down="(portId, ev) => startLink(c.id, portId, ev)"
       @port-in-up="(portId) => endLink(c.id, portId)"
     />
@@ -139,6 +140,7 @@ onBeforeUnmount(() => {
 })
 
 async function runCell(id: string, propagate = true) {
+  console.log('[renderer] runCell enter', id)
   wf.startRun(id)
   const cell = wf.cells.find(c => c.id === id)
   if (!cell) return
@@ -150,17 +152,30 @@ async function runCell(id: string, propagate = true) {
   const runtime = cell.config.interpreter || (cell.config.language==='python' ? wf.runtimes?.python : wf.runtimes?.julia)
       // @ts-ignore
   const editedPath = (cell.config.params as any)?._editedPath
-  const res = await window.flowboard.runCell({ language: cell.config.language, code: cell.config.code, params: cell.config.params, interpreter: runtime, path: editedPath })
+  // Important: params lives inside a reactive store; pass a plain JSON clone to IPC to avoid structured-clone errors
+  const paramsPlain = JSON.parse(JSON.stringify(cell.config.params || {}))
+  console.log('[renderer] Run cell', id, 'type=', cell.config.type, 'lang=', cell.config.language, 'interp=', runtime, 'paramsKeys=', Object.keys(paramsPlain||{}))
+  const res = await window.flowboard.runCell({ language: cell.config.language, code: cell.config.code, params: paramsPlain, interpreter: runtime, path: editedPath })
       if (res.ok) {
-        cell.lastResult = { ...(res.data || {}), stdout: res.stdout, imagePath: res.imagePath }
+    console.log('[renderer] Run ok for', id, 'stdout bytes:', (res.stdout||'').length, 'image:', !!res.imagePath)
+    // Normalize data: unwrap { value: ... } and lift x/y when present so downstream cells can consume them
+    const d = res.data
+    const unwrapped = (d && typeof d === 'object' && 'value' in d) ? (d as any).value : d
+    let normalized: any
+    if (Array.isArray(unwrapped)) normalized = { series: unwrapped }
+    else if (unwrapped && typeof unwrapped === 'object' && ('x' in (unwrapped as any) || 'y' in (unwrapped as any))) normalized = { ...(unwrapped as any) }
+    else normalized = (d || {})
+    cell.lastResult = { ...normalized, stdout: res.stdout, imagePath: res.imagePath }
         if (res.warning) cell.lastWarning = res.warning
         wf.finishRun(id, res.warning ? 'warning' : 'success')
         if (propagate) await autoRunDownstream(id)
       } else {
+        console.error('[renderer] Run failed for', id, res)
         cell.lastError = res.error
         wf.finishRun(id, 'error')
       }
     } catch (e:any) {
+      console.error('[renderer] Run threw for', id, e)
       cell.lastError = String(e?.message ?? e)
       wf.finishRun(id, 'error')
     }
@@ -194,10 +209,34 @@ async function runWithDeps(targetId: string) {
     const cell = wf.cells.find(c => c.id===id)
     if (!cell) continue
     // collect inputs from upstream .lastResult
-    const ins = wf.links.filter(l => l.to.cellId===id).map(l => wf.cells.find(c => c.id===l.from.cellId)?.lastResult).filter(Boolean)
+  const insRaw = wf.links.filter(l => l.to.cellId===id).map(l => wf.cells.find(c => c.id===l.from.cellId)?.lastResult).filter(Boolean)
+  // Ensure inputs are plain JSON (structured clonable) for downstream interpreter cells
+  const ins = JSON.parse(JSON.stringify(insRaw))
     cell.config.params = { ...(cell.config.params||{}), inputs: ins }
     await runCell(id, false)
   }
+}
+
+// Helper: set inputs for a cell from existing upstream results (do not rerun upstream)
+function setInputsForCell(id: string) {
+  const cell = wf.cells.find(c => c.id===id)
+  if (!cell) return
+  const insRaw = wf.links.filter(l => l.to.cellId===id).map(l => wf.cells.find(c => c.id===l.from.cellId)?.lastResult).filter(Boolean)
+  const ins = JSON.parse(JSON.stringify(insRaw))
+  cell.config.params = { ...(cell.config.params||{}), inputs: ins }
+}
+
+// Run only this cell (using current upstream outputs as inputs), no deps, no downstream
+async function runJustCell(id: string) {
+  setInputsForCell(id)
+  await runCell(id, false)
+}
+
+// Run this cell, then BFS downstream (no upstream deps)
+async function runSelfAndDownstream(targetId: string) {
+  setInputsForCell(targetId)
+  await runCell(targetId, false)
+  await autoRunDownstream(targetId)
 }
 
 // Auto-run downstream cells in BFS order starting from a cell
@@ -212,8 +251,9 @@ async function autoRunDownstream(startId: string) {
     const id = q.shift()!
     const cell = wf.cells.find(c => c.id===id)
     if (!cell) continue
-    const ins = wf.links.filter(l => l.to.cellId===id).map(l => wf.cells.find(c => c.id===l.from.cellId)?.lastResult).filter(Boolean)
-    cell.config.params = { ...(cell.config.params||{}), inputs: ins }
+  const insRaw = wf.links.filter(l => l.to.cellId===id).map(l => wf.cells.find(c => c.id===l.from.cellId)?.lastResult).filter(Boolean)
+  const ins = JSON.parse(JSON.stringify(insRaw))
+  cell.config.params = { ...(cell.config.params||{}), inputs: ins }
     await runCell(id, false)
     // enqueue further downstream
     for (const l of wf.links.filter(l => l.from.cellId===id)) {
@@ -590,8 +630,10 @@ async function saveFlow() {
   // @ts-ignore
   if (!window.flowboard?.saveWorkflow) return
   const state = { id: wf.id, name: wf.name, version: 1, language: wf.language, globalTheme: wf.globalTheme, cells: wf.cells, links: wf.links }
+  // Pass a plain JSON copy to avoid sending reactive proxies over IPC
+  const plain = JSON.parse(JSON.stringify(state))
   // @ts-ignore
-  await window.flowboard.saveWorkflow(state)
+  await window.flowboard.saveWorkflow(plain)
 }
 
 async function loadFlow() {
@@ -641,8 +683,9 @@ async function runDownstream() {
   for (const id of order) {
     const cell = wf.cells.find(c => c.id===id)
     if (!cell) continue
-    const ins = wf.links.filter(l => l.to.cellId===id).map(l => wf.cells.find(c => c.id===l.from.cellId)?.lastResult).filter(Boolean)
-    cell.config.params = { ...(cell.config.params||{}), inputs: ins }
+  const insRaw = wf.links.filter(l => l.to.cellId===id).map(l => wf.cells.find(c => c.id===l.from.cellId)?.lastResult).filter(Boolean)
+  const ins = JSON.parse(JSON.stringify(insRaw))
+  cell.config.params = { ...(cell.config.params||{}), inputs: ins }
     await runCell(id)
   }
 }

@@ -17,7 +17,7 @@ if (window.flowboard?.detectInterpreters) {
         const wf = useWorkflow()
         wf.setRuntimes({ python: rt?.python, julia: rt?.julia })
       } catch {}
-      console.log('Interpreters:', rt)
+  console.log('[renderer] Interpreters detected:', rt)
     })
     .catch(console.error)
 }

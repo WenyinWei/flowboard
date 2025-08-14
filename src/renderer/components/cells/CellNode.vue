@@ -15,10 +15,10 @@
     </div>
     <AnsiModal v-model="showDetail" :title="modalTitle" :text="detailText || ''" />
     <div class="switches">
-      <button class="btn" @click="$emit('switchMode','card')">▭</button>
-  <button class="btn" @click="$emit('switchMode','visual')">▣</button>
-  <button class="btn run" @click="$emit('run')">▶</button>
-  <button class="btn" title="Run downstream" @click="$emit('run')">▼</button>
+    <button class="btn" @mousedown.stop @click="$emit('switchMode','card')">▭</button>
+  <button class="btn" @mousedown.stop @click="$emit('switchMode','visual')">▣</button>
+  <button class="btn run" @mousedown.stop @click="onRun">▶</button>
+  <button class="btn" title="Run downstream" @mousedown.stop @click="onRunDownstream">▼</button>
     </div>
   </div>
 </template>
@@ -70,6 +70,20 @@ function humanTime(ms: number) {
   const sec = s % 60
   if (m > 0) return `${m}m ${sec}s`
   return `${sec}s`
+}
+
+function onRun() {
+  console.log('[renderer] CellNode run click', props.cell.id)
+  // Emit upward
+  // @ts-ignore
+  ;(emit as any)('run')
+}
+
+function onRunDownstream() {
+  console.log('[renderer] CellNode run downstream click', props.cell.id)
+  // Emit upward
+  // @ts-ignore
+  ;(emit as any)('run-downstream')
 }
 </script>
 

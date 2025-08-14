@@ -1,6 +1,6 @@
 <template>
   <div class="cell" :class="{ selected: isSelected }" :style="cellStyle" ref="rootRef" @mousedown="onDown" @dblclick="onDblClick" :data-cell-id="cell.id">
-    <component :is="comp" :cell="cell" :theme="theme" :runningInfo="runningInfo" @switchMode="switchMode" @run="$emit('run', cell.id)" />
+  <component :is="comp" :cell="cell" :theme="theme" :runningInfo="runningInfo" @switchMode="switchMode" @run="onRunClick" @run-downstream="onRunDownstreamClick" />
     <!-- inline port handles for precise hit targets -->
   <div class="port in" v-for="p in cell.inputs" :key="'in-'+p.id" :data-port-id="p.id" :title="p.id" @mouseup.stop="$emit('port-in-up', p.id)"></div>
   <div class="port out" v-for="p in cell.outputs" :key="'out-'+p.id" :data-port-id="p.id" :title="p.id" @mousedown.stop="$emit('port-out-down', p.id, $event)"></div>
@@ -44,6 +44,7 @@ let lastX = rect.value.x, lastY = rect.value.y
 let dragging = false
 let raf = 0
 function onDown(e: MouseEvent) {
+  if (e.button !== 0) return
   if (e.ctrlKey || e.metaKey) wf.toggleSelected(props.cell.id)
   else wf.selectExclusive(props.cell.id)
   dragging = true
@@ -58,6 +59,16 @@ function onDown(e: MouseEvent) {
   document.body.classList.add('flowboard-no-select')
   document.addEventListener('mousemove', onMove, { passive: true })
   document.addEventListener('mouseup', onUp, { passive: true, once: true })
+}
+
+function onRunClick() {
+  console.log('[renderer] CellView propagating run for', props.cell.id)
+  emit('run', props.cell.id)
+}
+
+function onRunDownstreamClick() {
+  console.log('[renderer] CellView propagating run-downstream for', props.cell.id)
+  emit('run-downstream', props.cell.id)
 }
 function onMove(e: MouseEvent) {
   if (!dragging) return

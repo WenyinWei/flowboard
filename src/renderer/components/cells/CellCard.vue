@@ -2,11 +2,11 @@
   <div class="card" :style="styleVars">
     <header class="hdr">
       <div class="title">{{ cell.label }}</div>
-      <div class="actions">
-  <button class="btn" @click="$emit('switchMode','node')">●</button>
-  <button class="btn" @click="$emit('switchMode','visual')">▣</button>
-        <button class="btn run" @click="$emit('run')">Run</button>
-  <button class="btn" title="Run downstream" @click="$emit('run')">▼</button>
+  <div class="actions">
+  <button class="btn" @mousedown.stop @click="$emit('switchMode','node')">●</button>
+  <button class="btn" @mousedown.stop @click="$emit('switchMode','visual')">▣</button>
+    <button class="btn run" @mousedown.stop @click="onRun">Run</button>
+  <button class="btn" title="Run downstream" @mousedown.stop @click="onRunDownstream">▼</button>
       </div>
     </header>
     <div class="body">
@@ -112,6 +112,16 @@ function onParamInput(key: string, ev: Event) {
   if (wasInt) num = Math.round(num)
   if (!props.cell.config.params) props.cell.config.params = {}
   ;(props.cell.config.params as any)[key] = num
+}
+
+function onRun() {
+  console.log('[renderer] CellCard run click', props.cell.id)
+  emit('run')
+}
+
+function onRunDownstream() {
+  console.log('[renderer] CellCard run downstream click', props.cell.id)
+  emit('run-downstream')
 }
 
 function humanTime(ms: number) {
