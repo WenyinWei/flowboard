@@ -23,8 +23,15 @@
         <span class="chip success">{{ rollup.success }}</span>
         <span class="chip error">{{ rollup.error }}</span>
       </span>
-      <button class="btn" @click="saveFlow">Save</button>
-      <button class="btn" @click="loadFlow">Load</button>
+  <button class="btn" @click="saveFlow">Save</button>
+  <button class="btn" @click="loadFlow">Load</button>
+  <span class="sep"></span>
+  <button class="btn" title="Align Left" @click="align('left')">⟸</button>
+  <button class="btn" title="Align Right" @click="align('right')">⟹</button>
+  <button class="btn" title="Align Top" @click="align('top')">⟰</button>
+  <button class="btn" title="Align Bottom" @click="align('bottom')">⟱</button>
+  <button class="btn" title="Distribute Horizontally" @click="distribute('h')">⇔</button>
+  <button class="btn" title="Distribute Vertically" @click="distribute('v')">⇕</button>
     </div>
 
     <!-- connection layer -->
@@ -53,6 +60,8 @@
 
     <!-- ghost cell while creating from dangling output -->
     <div v-if="ghost" class="ghost" :style="{ transform: `translate3d(${ghost.x}px, ${ghost.y}px, 0)` }">New cell…</div>
+  <!-- marquee selection rectangle -->
+  <div v-if="marquee" class="marquee" :style="marqueeStyle"></div>
   </div>
 </template>
 
@@ -69,6 +78,9 @@ const viewW = window.innerWidth
 const viewH = window.innerHeight
 const interpPick = ref<string>('')
 const linksTick = ref(0)
+const marquee = ref<{ x:number;y:number;w:number;h:number }|null>(null)
+const marqueeStart = ref<{ x:number;y:number }|null>(null)
+const marqueeStyle = computed(() => marquee.value ? ({ left: marquee.value.x+'px', top: marquee.value.y+'px', width: marquee.value.w+'px', height: marquee.value.h+'px' }) : ({}))
 
 onMounted(() => {
   if (wf.cells.length === 0) {
@@ -264,6 +276,65 @@ function applyInterpreter() {
   wf.setInterpreterForSelected(val)
 }
 
+function rectsOfSelected() {
+  return wf.selectedIds.map(id => {
+    const c = wf.cells.find(x=>x.id===id)
+    if (!c) return null
+    const r = c.rects[c.mode]
+    return { id, r, mode: c.mode }
+  }).filter(Boolean) as Array<{id:string;r:{x:number;y:number;w:number;h:number};mode:string}>
+}
+
+function align(kind: 'left'|'right'|'top'|'bottom') {
+  const items = rectsOfSelected(); if (items.length < 2) return
+  if (kind==='left') {
+    const x = Math.min(...items.map(i=>i.r.x))
+    for (const i of items) wf.setRect(i.id, i.mode as any, { ...i.r, x })
+  } else if (kind==='right') {
+    const right = Math.max(...items.map(i=>i.r.x + i.r.w))
+    for (const i of items) wf.setRect(i.id, i.mode as any, { ...i.r, x: right - i.r.w })
+  } else if (kind==='top') {
+    const y = Math.min(...items.map(i=>i.r.y))
+    for (const i of items) wf.setRect(i.id, i.mode as any, { ...i.r, y })
+  } else if (kind==='bottom') {
+    const bottom = Math.max(...items.map(i=>i.r.y + i.r.h))
+    for (const i of items) wf.setRect(i.id, i.mode as any, { ...i.r, y: bottom - i.r.h })
+  }
+  linksTick.value++
+}
+
+function distribute(axis: 'h'|'v') {
+  const items = rectsOfSelected(); if (items.length < 3) return
+  if (axis==='h') {
+    const sorted = items.slice().sort((a,b)=>a.r.x-b.r.x)
+    const left = sorted[0].r.x
+    const right = Math.max(...sorted.map(i=>i.r.x + i.r.w))
+    const span = right - left
+    const gaps = sorted.length - 1
+    if (span <= 0) return
+    for (let idx=0; idx<sorted.length; idx++) {
+      const i = sorted[idx]
+      const t = gaps>0? (idx/gaps) : 0
+      const x = Math.round(left + t * (span - i.r.w))
+      wf.setRect(i.id, i.mode as any, { ...i.r, x })
+    }
+  } else {
+    const sorted = items.slice().sort((a,b)=>a.r.y-b.r.y)
+    const top = sorted[0].r.y
+    const bottom = Math.max(...sorted.map(i=>i.r.y + i.r.h))
+    const span = bottom - top
+    const gaps = sorted.length - 1
+    if (span <= 0) return
+    for (let idx=0; idx<sorted.length; idx++) {
+      const i = sorted[idx]
+      const t = gaps>0? (idx/gaps) : 0
+      const y = Math.round(top + t * (span - i.r.h))
+      wf.setRect(i.id, i.mode as any, { ...i.r, y })
+    }
+  }
+  linksTick.value++
+}
+
 // --- Ports and linking ---
 type DragLink = { from: { cellId: string; port: string }, to?: { x: number; y: number } }
 const dragLink = ref<DragLink | null>(null)
@@ -401,13 +472,50 @@ function endLink(targetCellId: string, targetPort: string) {
   window.removeEventListener('mousemove', onDragging)
 }
 
-function onBoardDown() {
+function onBoardDown(e: MouseEvent) {
   // cancel link if clicked empty
   if (dragLink.value) {
     dragLink.value = null
     ghost.value = null
     window.removeEventListener('mousemove', onDragging)
   }
+  // start marquee if clicking on empty board area
+  const target = e.target as HTMLElement
+  const isCell = !!target.closest?.('.cell')
+  const isPort = !!target.closest?.('.port')
+  if (isCell || isPort) return
+  const br = boardRect()
+  const sx = e.clientX - br.left
+  const sy = e.clientY - br.top
+  marqueeStart.value = { x: sx, y: sy }
+  marquee.value = { x: sx, y: sy, w: 0, h: 0 }
+  const onMove = (ev: MouseEvent) => {
+    const x = ev.clientX - br.left
+    const y = ev.clientY - br.top
+    const x0 = marqueeStart.value!.x, y0 = marqueeStart.value!.y
+    const rx = Math.min(x0, x), ry = Math.min(y0, y)
+    const rw = Math.abs(x - x0), rh = Math.abs(y - y0)
+    marquee.value = { x: rx, y: ry, w: rw, h: rh }
+  }
+  const onUp = () => {
+    window.removeEventListener('mousemove', onMove)
+    window.removeEventListener('mouseup', onUp)
+    if (!marquee.value) return
+    const box = marquee.value
+    // select cells whose rect intersects box (current mode)
+    const ids: string[] = []
+    for (const c of wf.cells) {
+      const r = c.rects[c.mode]
+      const ix = !(r.x > box.x+box.w || r.x+r.w < box.x)
+      const iy = !(r.y > box.y+box.h || r.y+r.h < box.y)
+      if (ix && iy) ids.push(c.id)
+    }
+    wf.setSelectedMany(ids)
+    marquee.value = null
+    marqueeStart.value = null
+  }
+  window.addEventListener('mousemove', onMove)
+  window.addEventListener('mouseup', onUp, { once: true })
 }
 
 function cellTransform(c: any) {
@@ -486,10 +594,12 @@ async function runDownstream() {
 .links path.temp { stroke: #9ad8ff; stroke-width: 1.5; opacity: 0.8 }
 .links path:hover { filter: drop-shadow(0 0 4px #9ad8ff) }
 .btn { margin-left: 8px; padding: 2px 8px; border: 1px solid #2b3340; border-radius: 6px; background: rgba(0,0,0,0.3); color: #e1e7f0; cursor: pointer; }
+.sep { display: inline-block; width: 10px; }
 .ghost { position: absolute; padding: 4px 8px; border: 1px dashed #6aa2ff; color: #6aa2ff; border-radius: 8px; background: rgba(0,0,0,0.2); pointer-events: none; }
 .rollup { margin-left: 8px; display: inline-flex; gap: 6px; align-items: center; }
 .chip { display: inline-block; min-width: 20px; text-align: center; padding: 1px 6px; border-radius: 999px; border: 1px solid #2b3340; font-size: 12px; }
 .chip.running { border-color: #3498db; color: #3498db }
 .chip.success { border-color: #2ecc71; color: #2ecc71 }
 .chip.error { border-color: #e74c3c; color: #e74c3c }
+.marquee { position: absolute; pointer-events: none; border: 1px dashed #5ec8ff; background: rgba(94,200,255,0.1); }
 </style>
