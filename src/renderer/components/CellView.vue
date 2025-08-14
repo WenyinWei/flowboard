@@ -104,7 +104,12 @@ async function onDblClick() {
   if (props.cell.config?.code && window.flowboard?.openInEditor) {
     try {
       // @ts-ignore
-      await window.flowboard.openInEditor({ language: props.cell.config.language, code: props.cell.config.code, hintName: props.cell.label })
+  const prev = (props.cell.config.params as any)?._editedPath
+  const res = await window.flowboard.openInEditor({ language: props.cell.config.language, code: props.cell.config.code, hintName: props.cell.label, path: prev })
+      if (res?.ok && res.path) {
+        // remember the edited temp file path inside params for subsequent runs
+        props.cell.config.params = { ...(props.cell.config.params||{}), _editedPath: res.path }
+      }
     } catch {}
   }
 }
